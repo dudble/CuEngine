@@ -1,5 +1,6 @@
 [package]
-name = "core"
+# 与标准库core命名冲突，故用此名
+name = "engine-core"
 version = "0.1.0"
 edition = "2024"
 

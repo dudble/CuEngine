@@ -1,13 +1,22 @@
 # CuEngine
 
-以下全是AI帮忙写的，回头再改
+以下是用来给AI看的，给人看的readme回头再写
 
-基于 Rust + vulkano 的 2D 游戏引擎（毕业设计）。
+基于 Rust + vulkano 的 2D 游戏引擎（毕业设计），3D功能不做。
 
-四层架构参考 Piccolo：**工具层 → 功能层 → 资源层 → 核心层**，上层依赖下层，禁止反向依赖。3D 功能不做。
+层间依赖声明与依赖选型：**写到该步骤时再现场定，不提前规划**。
 
-- 层间依赖声明与依赖选型：**写到该步骤时再现场定，不提前规划**。
-- 参考源码：Piccolo（重点 `engine/source/runtime`）、Godot
+游戏引擎五层架构参考 Piccolo：
+- 平台层 platform 用以支持各个硬件平台，如ps switch epic steam。
+- 核心层 core 用以系统调用，如垃圾管理 内存分配 线程管理 以及数学模块等底层工具
+- 资源层 resorce 用以管理各类数据，如声音图像视频等
+- 功能层 function 用以实现操作系统具体功能，如渲染 动画 物理等
+- 工具层 tool 用以给使用者提供创作工具
+  
+上述四层在piccolo的具体实现在D:\games\Piccolo\engine\source\runtime,此外因piccolo是3D引擎，实现时亦可参考godot
+
+另外source\editor是编辑器
+
 ## 构建与运行
 
 ```powershell
@@ -27,56 +36,84 @@ cargo run
 
 ---
 
-## W1 任务清单（目标：分层骨架 + 纯色窗口）
+## 各层在 Piccolo 的落点（照抄参考）
 
-### D1 工程骨架
+| 层 | Piccolo 位置 | 内容 |
+| --- | --- | --- |
+| 平台层 | `runtime/platform` | 只有 `file_service` + `path`，共 93 行；纯文件/路径，与窗口输入无关 |
+| 核心层 | `runtime/core` | base、log、math、color、meta（反射） |
+| 资源层 | `runtime/resource` | `asset_manager`、`config_manager`、`res_type` |
+| 功能层 | `runtime/function` | render（含 `window_system`）、input、animation、physics、framework、ui、particle、character、controller、global |
+| 工具层 | `source/editor` | 编辑器 |
 
-- [x] workspace 成员：`app` + `runtime/{core,platform,resource,function}`
-- [x] runtime 各层用 `src/lib.rs`（可被引用），`app` 用 `src/main.rs`
+> 引擎主循环 `runtime/engine.cpp` 在 runtime 顶层：持有各系统、`logicalTick → world_manager->tick`。**每帧自动 tick 对象树（`Level::tick → GObject::tick → Component::tick`），使用者只实现 `Component::tick`，不自己驱动循环。**
+>
+> CuEngine 对应 **`runtime/engine` crate**：位于 runtime 顶层、**独立于四层之外**，由 `app` 调用。
+
+---
+
+## 开发方式：自顶向下（纵向切片）
+
+先打通"app 入口 → 屏幕可见"的最薄一条路径，再逐层加厚，底层用到再补。
+
+- 分层与依赖方向不变（上层依赖下层）；只是**实现顺序**自顶向下。
+- 下层先给"够用的最小实现"，接口留清楚，后续替换实现，别让临时硬编码渗进上层。
+- 每轮迭代都要能跑出可见成果。
+
+### 工程骨架（已完成）
+
+- [x] workspace：`app` + `runtime/{platform, engine-core, resource, function}`
+- [x] 各 runtime 层用 `src/lib.rs`，`app` 用 `src/main.rs`
 - [x] `cargo build` / `cargo run` 跑通
-- [x] 包名 `core`：撞 Rust 标准库 `core`，实测会让 `core::time::Instant` 报 E0433，接依赖后必炸
+- [x] `engine-core` 包名已改（原 `core`），避开 Rust 标准库
+- [ ] 新增 `runtime/engine` crate：runtime 顶层、独立于四层，供 `app` 调用
 
+---
 
-验收：整区编译通过、格式化/lint 通过、依赖方向无环。
+## 迭代计划
 
-### D2 core 层
+### 迭代 0：空窗口 + 帧循环
 
-- [ ] 日志：级别过滤、带时间戳
-- [ ] 时间：帧 delta、FPS 平滑（参考 Piccolo `engine.cpp` 的 `s_fps_alpha`）
-- [ ] 2D 数学与坐标系约定：原点、Y 朝向、像素坐标 vs 世界坐标、正交投影
-- [ ] 基础类型：`Handle { index, generation }`、错误类型、事件枚举
-- [ ] 以上各自带单元测试
+依赖方向：`app → engine → function → engine-core`（`engine` 直接用 `engine-core`）。
 
-### D3 配置 + 窗口
+- `runtime/engine`（顶层）：`Engine` 持有各系统、实现 winit 事件循环与每帧 tick；帧计时 + FPS 计数
+- 功能层 `function`：`WindowSystem`（建窗、事件、close/尺寸）
+- 核心层 `engine-core`：log
+- `app`：`main` 建 Engine、驱动循环
+- **可见成果**：空窗口出现，标题显示 FPS，可关闭
 
-- [ ] 配置文件：窗口标题/尺寸、vsync、日志级别（对应 Piccolo `config_manager`）
-- [ ] 窗口事件循环：关闭、尺寸变化、键盘、鼠标
-- [ ] 输入状态缓存：`pressed` / `just_pressed` / `released`，每帧刷新
+### 迭代 1：Vulkan 清屏
 
-### D4–D5 Vulkan 初始化（最重，照抄对应版本 vulkano 的官方 example）
+- 功能层：Renderer（Instance + validation、设备/队列、Swapchain、2 frames-in-flight、RenderPass、清屏）
+- **可见成果**：纯色窗口，resize/最小化不崩，validation layer 0 error
 
-- [ ] Instance + validation layer（debug 构建开启）
-- [ ] 物理设备选择（优先独显 NVIDIA）+ 逻辑设备/队列
-- [ ] Swapchain：格式与呈现模式从配置读取
-- [ ] 双缓冲同步：2 frames-in-flight，每帧 semaphore + fence
-- [ ] RenderPass + 清屏 + submit/present
+> 迭代 0+1 = W1 目标（纯色窗口）。
 
-验收：纯色窗口稳定 60fps，validation layer 0 error。
+### 迭代 2：配置外置 + 文件读取
 
-### D6 健壮性
+- 资源层：`config_manager`（窗口尺寸/vsync/log 级别）
+- 平台层：文件系统 + 路径工具
+- **可见成果**：改配置文件即可改窗口参数
 
-- [ ] resize / 最小化（0 尺寸）/ `OUT_OF_DATE` → 重建 swapchain
-- [ ] FPS 显示到窗口标题（对应 Piccolo `setTitle`）
-- [ ] 错误统一走错误类型 + 日志，禁止裸 `unwrap` 崩溃
+### 迭代 3：画图元 + 相机
 
-验收：反复拖窗口、切后台、最小化均不崩。
+- 核心层：2D 数学、坐标系约定、正交投影
+- 功能层：shader、顶点/索引缓冲、正交相机、精灵渲染
+- **可见成果**：屏幕上出现精灵
 
-### D7 收尾
+### 迭代 4：游戏框架
 
-- [ ] README 补充构建/运行细节
-- [ ] `git commit`
-- [ ] 录 W1 demo、画四层架构图（开题素材）
-- [ ] 预研 W2：2D 批渲染方案
+- 功能层：`GObject` / `Component` / `Level` / `World`，引擎每帧自动 tick
+- 资源层：资源管理（纹理等）、场景文件读写
+- **可见成果**：一个会动的对象
+
+### 工具层（后续）
+
+- 编辑器 / 创作工具
+
+### W1 总验收
+
+五层目录就位；空窗口跑起来、纯色清屏、resize 与最小化不崩、validation clean。
 
 ---
 
@@ -84,14 +121,15 @@ cargo run
 
 | 阶段 | 目标 |
 | --- | --- |
-| **W2** | 着色器 + 顶点/索引缓冲、正交相机、精灵渲染 |
-| **W3** | 资源管理（纹理等）、场景树 + Transform、场景文件读写 |
-| **W4** | 整合 demo + 录屏 + 架构图，完成开题报告与 PPT（**开题答辩 ≈ 一个月后**） |
-| **M2** | 文本渲染、帧动画、输入完善、配置系统 |
+| **W2** | 迭代 2 + 迭代 3：配置/文件、精灵渲染、正交相机 |
+| **W3** | 迭代 4：游戏框架、资源管理、场景文件 |
+| **W4** | 整合 demo + 录屏 + 五层架构图，开题报告与 PPT（**开题 ≈ 一个月后**） |
+| **M2** | 文本渲染、帧动画、输入完善 |
 | **M3** | 物理、脚本、热重载（P2，可砍） |
-| **M4** | 示例小游戏、性能分析、论文撰写 |
+| **M4** | 编辑器、示例小游戏、性能分析、论文撰写 |
 
 ## 风险与砍单预案
 
-- 时间不足时的砍单顺序：**P2 全砍 → P1 砍部分**，P0 骨架保证完整。
-- vulkano 各版本 API 变动大，实现只认所装版本的官方 examples
+- Vulkan 必须在 Windows 侧运行，WSL 只负责编辑。
+- 砍单顺序：**P2 全砍 → P1 砍部分**，P0 骨架保证完整。
+- vulkano 各版本 API 变动大，实现只认所装版本的官方 examples，不照抄网络教程。

@@ -1,3 +1,5 @@
+use engine::Engine;
+
 fn main() {
-    println!("Hello, world!");
+    Engine::new().run();
 }
