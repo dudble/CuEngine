@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::error::OsError;
@@ -28,7 +30,7 @@ pub trait WindowHandler {
 }
 
 pub struct WindowSystem {
-    window: Window,
+    window: Arc<Window>,
     size: (u32, u32),
 }
 
@@ -37,13 +39,17 @@ impl WindowSystem {
         let attributes = WindowAttributes::default()
             .with_title(config.title.clone())
             .with_inner_size(LogicalSize::new(config.width as f64, config.height as f64));
-        let window = event_loop.create_window(attributes)?;
+        let window = Arc::new(event_loop.create_window(attributes)?);
         let size = window.inner_size();
 
         Ok(Self {
             window,
             size: (size.width, size.height),
         })
+    }
+
+    pub(crate) fn window(&self) -> Arc<Window> {
+        self.window.clone()
     }
 
     pub fn size(&self) -> (u32, u32) {
@@ -88,7 +94,12 @@ impl<H: WindowHandler> ApplicationHandler for WindowApp<'_, H> {
         event_loop.set_control_flow(ControlFlow::Poll);
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 self.handler.on_close();

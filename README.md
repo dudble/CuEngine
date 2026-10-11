@@ -1,8 +1,6 @@
 # CuEngine
 
-以下是用来给AI看的，给人看的readme回头再写
-
-基于 Rust + vulkano 的 2D 游戏引擎（毕业设计），3D功能不做。
+基于 Rust + vulkano 的 2D 游戏引擎，3D功能不做。
 
 层间依赖声明与依赖选型：**写到该步骤时再现场定，不提前规划**。
 
@@ -20,11 +18,14 @@
 ## 构建与运行
 
 ```powershell
-cd D:\games\CuEngine
 cargo run
 ```
 
 环境：Rust stable (MSVC)、`Visual Studio\BuildTools`、`VulkanSDK\1.4.350.0`、RTX 4060 (Vulkan 1.4.312)。
+
+---
+## 以下是用来给AI看的，给人看的完整readme回头再写
+### 各层在 Piccolo 的落点（照抄参考）
 
 ## 优先级
 
@@ -32,11 +33,7 @@ cargo run
 | --- | --- |
 | **P0** | 骨架与核心：窗口/Vulkan 初始化、2D 渲染、场景树、资源加载 |
 | **P1** | 完整度：文本渲染、帧动画、输入、配置、调试 overlay |
-| **P2** | 可砍：物理、脚本、音频、粒子、TileMap —— 时间不足先砍这里 |
-
----
-
-## 各层在 Piccolo 的落点（照抄参考）
+| **P2** | 物理、脚本、音频、粒子、TileMap —— 时间不足先砍这里 |
 
 | 层 | Piccolo 位置 | 内容 |
 | --- | --- | --- |
@@ -52,7 +49,7 @@ cargo run
 
 ---
 
-## 开发方式：自顶向下（纵向切片）
+### 开发方式：自顶向下（纵向切片）
 
 先打通"app 入口 → 屏幕可见"的最薄一条路径，再逐层加厚，底层用到再补。
 
@@ -60,17 +57,9 @@ cargo run
 - 下层先给"够用的最小实现"，接口留清楚，后续替换实现，别让临时硬编码渗进上层。
 - 每轮迭代都要能跑出可见成果。
 
-### 工程骨架（已完成）
-
-- [x] workspace：`app` + `runtime/{platform, engine-core, resource, function}`
-- [x] 各 runtime 层用 `src/lib.rs`，`app` 用 `src/main.rs`
-- [x] `cargo build` / `cargo run` 跑通
-- [x] `engine-core` 包名已改（原 `core`），避开 Rust 标准库
-- [ ] 新增 `runtime/engine` crate：runtime 顶层、独立于四层，供 `app` 调用
-
 ---
 
-## 迭代计划
+### 迭代计划
 
 ### 迭代 0：空窗口 + 帧循环
 

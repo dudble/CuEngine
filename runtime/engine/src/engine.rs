@@ -1,4 +1,5 @@
-use function::window::{WindowConfig, WindowHandler, WindowSystem};
+use function::render::render_system::RenderSystem;
+use function::render::window::{WindowConfig, WindowHandler, WindowSystem, run as window_run};
 use std::time::Instant;
 
 const WINDOW_TITLE: &str = "CuEngine";
@@ -8,6 +9,7 @@ const FPS_SMOOTHING: f32 = 1.0 / 100.0;
 const MAX_DELTA_TIME: f32 = 0.1;
 
 pub struct Engine {
+    render: Option<RenderSystem>,
     last_tick_time: Instant,
     average_duration: f32,
     frame_count: u64,
@@ -17,6 +19,7 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Self {
         Self {
+            render: None,
             last_tick_time: Instant::now(),
             average_duration: 0.0,
             frame_count: 0,
@@ -28,7 +31,7 @@ impl Engine {
         engine_core::log_info!("engine start");
 
         let config = WindowConfig::new(WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
-        function::window::run(&mut self, config);
+        window_run(&mut self, config);
 
         engine_core::log_info!("engine shutdown");
     }
@@ -67,14 +70,24 @@ impl WindowHandler for Engine {
     fn on_resume(&mut self, window: &mut WindowSystem) {
         let (width, height) = window.size();
         engine_core::log_info!("window created {}x{}", width, height);
+
+        self.render = Some(RenderSystem::new(window));
+        engine_core::log_info!("render system initialized");
     }
 
     fn on_update(&mut self, window: &WindowSystem) {
         let delta_time = self.calculate_delta_time();
         self.calculate_fps(delta_time);
 
+        if let Some(render) = &mut self.render {
+            render.render_frame(window.size());
+        }
+
         window.set_title(&format!("{} - {} FPS", WINDOW_TITLE, self.fps));
-        // 迭代 1：在此渲染
+    }
+
+    fn on_close(&mut self) {
+        self.render = None;
     }
 }
 

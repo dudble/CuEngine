@@ -1,0 +1,18 @@
+use crate::render::vulkan::VulkanRenderer;
+use crate::render::window::WindowSystem;
+
+pub struct RenderSystem {
+    renderer: VulkanRenderer,
+}
+
+impl RenderSystem {
+    pub fn new(window: &WindowSystem) -> Self {
+        Self {
+            renderer: VulkanRenderer::new(window.window()),
+        }
+    }
+
+    pub fn render_frame(&mut self, window_size: (u32, u32)) {
+        self.renderer.render_frame(window_size);
+    }
+}
