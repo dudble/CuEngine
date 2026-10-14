@@ -78,11 +78,55 @@ cargo run
 
 > 迭代 0+1 = W1 目标（纯色窗口）。
 
+**迭代 1 待补（先记着，以后再说）**：
+
+1. 真正的 2 frames-in-flight：目前每帧 `future.wait(None)` 等 GPU 完成（正确但吞吐低），要补 per-frame semaphore + fence。
+2. 错误处理统一成错误类型 + 日志：目前初始化用 `expect`、acquire 失败用 `eprintln`。
+3. `render/vulkan.rs` 拆成 `context / swapchain / frame`。
+4. 接 `DebugUtilsMessenger` 显式收集校验信息（现在只开了校验层，靠默认输出）。
+5. 透明窗口：`CLEAR_COLOR` 第 4 位确实是 alpha，但当前 swapchain 用的是 surface 首个格式（不带 alpha / 合成器当不透明处理），改 alpha 无效果。要做透明需：swapchain 换带 alpha 的格式（如 `R8G8B8A8_UNORM`）、窗口支持 layered、并在合成时混合。暂不做。
+
 ### 迭代 2：配置外置 + 文件读取
 
-- 资源层：`config_manager`（窗口尺寸/vsync/log 级别）
-- 平台层：文件系统 + 路径工具
-- **可见成果**：改配置文件即可改窗口参数
+目标：引擎启动时从配置文件读取窗口标题/尺寸、日志级别、vsync，改文件即生效。
+
+依赖方向（本迭代）：`resource → platform`，`engine → resource`（resource 用 platform 读文件；engine 用 resource 读配置）。
+
+- **平台层 `platform`**（对齐 Piccolo，纯 `std::fs` / `std::path`，无第三方库）
+  - `path`：exe 所在目录、路径拼接、扩展名/文件名/纯名（对齐 Piccolo `Path`）
+  - `file_service`：读文件为字符串、存在性判断、列目录（对齐 Piccolo `FileSystem`）
+- **资源层 `resource`**
+  - `config`：`ConfigManager`，加载配置 → `EngineConfig { window{title,width,height}, log_level, vsync }`
+  - 配置缺失 → 用默认值 + warn
+  - 配置位置：exe 同级目录（用 platform 的 path 定位）
+- **功能层 `function`**
+  - `render`：vsync → swapchain present mode（`true` = `Fifo`；`false` = 尝试 `Mailbox`/`Immediate`）
+- **`engine`**：`run()` 开头加载配置 → 设日志级别 → 用 window 配置建窗 → 把 vsync 传给 `RenderSystem`
+
+**待拍板——配置格式**：
+- A) `toml` + `serde`（外部 crate，你装；直观，将来场景序列化也复用）
+- B) 手写极简 `key = value` 解析（零依赖，多写 ~30 行）
+
+**任务清单**：
+
+1. `platform`：`path` + `file_service`（纯 std）
+2. `resource`：`config` 模块（加载 + 默认值）
+3. 加内部 path 依赖：`resource → platform`、`engine → resource`
+4. 配置格式定下后加对应依赖（你）
+5. `function/render`：vsync → present mode
+6. `engine`：`run()` 读配置、设日志级别、传 window/vsync 配置
+7. 放一份示例配置文件
+8. **验收**：改标题/尺寸/日志级别/vsync 后重启生效；配置文件缺失走默认 + warn
+
+**验收方法：怎么测 vsync 生效**
+
+- `vsync = true`：标题 FPS 锁在刷新率（60Hz≈60，144Hz≈144）。
+- `vsync = false`：FPS 解除上限、明显更高。
+- FPS 是平滑过的（α=1/100），启动约 1 秒后才稳定，别看第一帧。
+- 坑：
+  - Windows 窗口化 + DWM：桌面合成器本身按刷新率呈现，MAILBOX 窗口化也可能被压到 ~刷新率；真正不锁帧通常要**独占全屏**。
+  - 驱动不支持 MAILBOX 时会退回 FIFO，此时 `vsync = false` 仍表现为锁帧。
+- 结论：以标题 FPS 判断；窗口化下若差异不明显，属 DWM/驱动所致，不是实现错。
 
 ### 迭代 3：画图元 + 相机
 

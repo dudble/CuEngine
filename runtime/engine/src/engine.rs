@@ -1,15 +1,16 @@
 use function::render::render_system::RenderSystem;
 use function::render::window::{WindowConfig, WindowHandler, WindowSystem, run as window_run};
+use resource::config::ConfigManager;
 use std::time::Instant;
 
-const WINDOW_TITLE: &str = "CuEngine";
-const WINDOW_WIDTH: u32 = 1280;
-const WINDOW_HEIGHT: u32 = 720;
+const DEFAULT_WINDOW_TITLE: &str = "CuEngine";
 const FPS_SMOOTHING: f32 = 1.0 / 100.0;
 const MAX_DELTA_TIME: f32 = 0.1;
 
 pub struct Engine {
     render: Option<RenderSystem>,
+    window_title: String,
+    vsync: bool,
     last_tick_time: Instant,
     average_duration: f32,
     frame_count: u64,
@@ -20,6 +21,8 @@ impl Engine {
     pub fn new() -> Self {
         Self {
             render: None,
+            window_title: DEFAULT_WINDOW_TITLE.to_string(),
+            vsync: true,
             last_tick_time: Instant::now(),
             average_duration: 0.0,
             frame_count: 0,
@@ -28,10 +31,21 @@ impl Engine {
     }
 
     pub fn run(mut self) {
+        let config_manager = ConfigManager::load();
+        let config = config_manager.config().clone();
+
+        engine_core::log::set_level(parse_log_level(&config.log_level));
+        self.window_title = config.window.title.clone();
+        self.vsync = config.vsync;
+
         engine_core::log_info!("engine start");
 
-        let config = WindowConfig::new(WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
-        window_run(&mut self, config);
+        let window_config = WindowConfig::new(
+            config.window.title.clone(),
+            config.window.width,
+            config.window.height,
+        );
+        window_run(&mut self, window_config);
 
         engine_core::log_info!("engine shutdown");
     }
@@ -71,7 +85,7 @@ impl WindowHandler for Engine {
         let (width, height) = window.size();
         engine_core::log_info!("window created {}x{}", width, height);
 
-        self.render = Some(RenderSystem::new(window));
+        self.render = Some(RenderSystem::new(window, self.vsync));
         engine_core::log_info!("render system initialized");
     }
 
@@ -83,11 +97,22 @@ impl WindowHandler for Engine {
             render.render_frame(window.size());
         }
 
-        window.set_title(&format!("{} - {} FPS", WINDOW_TITLE, self.fps));
+        window.set_title(&format!("{} - {} FPS", self.window_title, self.fps));
     }
 
     fn on_close(&mut self) {
         self.render = None;
+    }
+}
+
+fn parse_log_level(value: &str) -> engine_core::log::Level {
+    use engine_core::log::Level;
+
+    match value.to_ascii_lowercase().as_str() {
+        "debug" => Level::Debug,
+        "warn" => Level::Warn,
+        "error" => Level::Error,
+        _ => Level::Info,
     }
 }
 

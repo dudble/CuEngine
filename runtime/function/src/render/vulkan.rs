@@ -35,7 +35,7 @@ pub struct VulkanRenderer {
 }
 
 impl VulkanRenderer {
-    pub fn new(window: Arc<Window>) -> Self {
+    pub fn new(window: Arc<Window>, vsync: bool) -> Self {
         let library = VulkanLibrary::new().expect("no Vulkan library available");
         let required_extensions =
             Surface::required_extensions(&*window).expect("failed to get surface extensions");
@@ -123,13 +123,26 @@ impl VulkanRenderer {
             .surface_formats(&surface, Default::default())
             .expect("failed to query surface formats")[0];
 
-        let present_mode = device
+        let available_present_modes = device
             .physical_device()
             .surface_present_modes(&surface, Default::default())
-            .expect("failed to query present modes")
-            .into_iter()
-            .find(|mode| *mode == PresentMode::Fifo)
-            .unwrap_or(PresentMode::Fifo);
+            .expect("failed to query present modes");
+
+        let present_mode = if vsync {
+            PresentMode::Fifo
+        } else {
+            available_present_modes
+                .iter()
+                .copied()
+                .find(|mode| *mode == PresentMode::Mailbox)
+                .or_else(|| {
+                    available_present_modes
+                        .iter()
+                        .copied()
+                        .find(|mode| *mode == PresentMode::Immediate)
+                })
+                .unwrap_or(PresentMode::Fifo)
+        };
 
         let size = window.inner_size();
         let image_extent = capabilities

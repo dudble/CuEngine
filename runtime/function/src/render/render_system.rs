@@ -6,9 +6,9 @@ pub struct RenderSystem {
 }
 
 impl RenderSystem {
-    pub fn new(window: &WindowSystem) -> Self {
+    pub fn new(window: &WindowSystem, vsync: bool) -> Self {
         Self {
-            renderer: VulkanRenderer::new(window.window()),
+            renderer: VulkanRenderer::new(window.window(), vsync),
         }
     }
 
