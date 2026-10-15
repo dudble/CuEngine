@@ -85,6 +85,7 @@ cargo run
 3. `render/vulkan.rs` 拆成 `context / swapchain / frame`。
 4. 接 `DebugUtilsMessenger` 显式收集校验信息（现在只开了校验层，靠默认输出）。
 5. 透明窗口：`CLEAR_COLOR` 第 4 位确实是 alpha，但当前 swapchain 用的是 surface 首个格式（不带 alpha / 合成器当不透明处理），改 alpha 无效果。要做透明需：swapchain 换带 alpha 的格式（如 `R8G8B8A8_UNORM`）、窗口支持 layered、并在合成时混合。暂不做。
+6. 测试分离：把各 crate 里的 `#[cfg(test)] mod tests` 拆到独立文件（如 `runtime/engine/src/engine/tests.rs`，用 `#[cfg(test)] mod tests;` 引入）。
 
 ### 迭代 2：配置外置 + 文件读取
 

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use engine_core::log::Level;
 use serde::Deserialize;
 
 use platform::{file_service, path};
@@ -10,7 +11,8 @@ const CONFIG_FILE_NAME: &str = "engine.toml";
 #[serde(default)]
 pub struct EngineConfig {
     pub window: WindowSettings,
-    pub log_level: String,
+    #[serde(deserialize_with = "deserialize_log_level")]
+    pub log_level: Level,
     pub vsync: bool,
 }
 
@@ -18,10 +20,23 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             window: WindowSettings::default(),
-            log_level: "info".to_string(),
+            log_level: Level::Info,
             vsync: true,
         }
     }
+}
+
+fn deserialize_log_level<'de, D>(deserializer: D) -> Result<Level, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    Ok(match value.to_ascii_lowercase().as_str() {
+        "debug" => Level::Debug,
+        "warn" => Level::Warn,
+        "error" => Level::Error,
+        _ => Level::Info,
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]

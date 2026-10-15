@@ -1,4 +1,4 @@
 [workspace]
 resolver = "3"
 members = ["app", "runtime/engine-core", "runtime/engine", "runtime/function", "runtime/platform", "runtime/resource"]
-#default-members = ["app"]
+default-members = ["app"]

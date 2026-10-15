@@ -34,7 +34,7 @@ impl Engine {
         let config_manager = ConfigManager::load();
         let config = config_manager.config().clone();
 
-        engine_core::log::set_level(parse_log_level(&config.log_level));
+        engine_core::log::set_level(config.log_level);
         self.window_title = config.window.title.clone();
         self.vsync = config.vsync;
 
@@ -102,17 +102,6 @@ impl WindowHandler for Engine {
 
     fn on_close(&mut self) {
         self.render = None;
-    }
-}
-
-fn parse_log_level(value: &str) -> engine_core::log::Level {
-    use engine_core::log::Level;
-
-    match value.to_ascii_lowercase().as_str() {
-        "debug" => Level::Debug,
-        "warn" => Level::Warn,
-        "error" => Level::Error,
-        _ => Level::Info,
     }
 }
 

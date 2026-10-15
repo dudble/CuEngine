@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-serde = { version = "1.0.229", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] } # 序列化
 toml = "1.1.8"
 engine-core = { path = "../engine-core" }
 platform = { path = "../platform" }
+image = "0.25.10"
