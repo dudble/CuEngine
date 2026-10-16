@@ -78,14 +78,16 @@ cargo run
 
 > 迭代 0+1 = W1 目标（纯色窗口）。
 
-**迭代 1 待补（先记着，以后再说）**：
+**待补（先记着，以后再说）**：
 
 1. 真正的 2 frames-in-flight：目前每帧 `future.wait(None)` 等 GPU 完成（正确但吞吐低），要补 per-frame semaphore + fence。
 2. 错误处理统一成错误类型 + 日志：目前初始化用 `expect`、acquire 失败用 `eprintln`。
-3. `render/vulkan.rs` 拆成 `context / swapchain / frame`。
-4. 接 `DebugUtilsMessenger` 显式收集校验信息（现在只开了校验层，靠默认输出）。
-5. 透明窗口：`CLEAR_COLOR` 第 4 位确实是 alpha，但当前 swapchain 用的是 surface 首个格式（不带 alpha / 合成器当不透明处理），改 alpha 无效果。要做透明需：swapchain 换带 alpha 的格式（如 `R8G8B8A8_UNORM`）、窗口支持 layered、并在合成时混合。暂不做。
-6. 测试分离：把各 crate 里的 `#[cfg(test)] mod tests` 拆到独立文件（如 `runtime/engine/src/engine/tests.rs`，用 `#[cfg(test)] mod tests;` 引入）。
+3. 接 `DebugUtilsMessenger` 显式收集校验信息（现在只开了校验层，靠默认输出）。
+4. 透明窗口：`CLEAR_COLOR` 第 4 位确实是 alpha，但当前 swapchain 用的是 surface 首个格式（不带 alpha / 合成器当不透明处理），改 alpha 无效果。要做透明需：swapchain 换带 alpha 的格式（如 `R8G8B8A8_UNORM`）、窗口支持 layered、并在合成时混合。暂不做。
+5. 测试分离：把各 crate 里的 `#[cfg(test)] mod tests` 拆到独立文件（如 `runtime/engine/src/engine/tests.rs`，用 `#[cfg(test)] mod tests;` 引入）。
+6. 纹理/精灵：`sprite.frag` 目前只输出顶点色（不采样）；要做纹理需 `Image` + 上传（staging buffer + copy）+ `Sampler` + 第二个描述符绑定。
+7. 主线程栈：Windows 主线程默认栈 1MB，vulkano 解析/校验 SPIR-V 会栈溢出；现用 `app/build.rs` 的 `cargo:rustc-link-arg=/STACK:8388608`（备选：`.cargo/config.toml` 的 `target.x86_64-pc-windows-msvc.rustflags`）。
+8. 最小化/0 尺寸已修（`WindowSystem::size()` 每帧查实际 `inner_size`，`render_frame` 遇 0 跳过）——记着防回归。
 
 ### 迭代 2：配置外置 + 文件读取
 
@@ -129,11 +131,51 @@ cargo run
   - 驱动不支持 MAILBOX 时会退回 FIFO，此时 `vsync = false` 仍表现为锁帧。
 - 结论：以标题 FPS 判断；窗口化下若差异不明显，属 DWM/驱动所致，不是实现错。
 
-### 迭代 3：画图元 + 相机
+### 迭代 3：画图元 + 相机（已完成）
 
-- 核心层：2D 数学、坐标系约定、正交投影
-- 功能层：shader、顶点/索引缓冲、正交相机、精灵渲染
-- **可见成果**：屏幕上出现精灵
+- 核心层：`engine-core` 重导出 `glam`；`Camera2D`（`function/render/camera.rs`）用 `glam::camera::rh::proj::vulkan::orthographic`，**自动处理 Vulkan 的 Y 下 / Z[0,1]**
+- 功能层：`sprite.vert`/`sprite.frag`（`build.rs` 用 `glslc` 编译 → `$OUT_DIR/*.spv` → `render::shader` 常量）；顶点/索引缓冲、uniform 缓冲（相机矩阵）、描述符集、`GraphicsPipeline`、每帧 `draw_indexed`
+- **可见成果**：屏幕中央一个 100×100 的四色渐变 quad（`sprite.frag` 暂只输出顶点色，纹理见待补 6）
+
+**渲染模块分工（`function/render`）**：
+
+```
+function/src/render/
+├── window.rs          窗口 + winit 事件循环（WindowHandler 回调）
+├── shader.rs          shader 字节常量（build.rs 用 glslc 编译）
+├── camera.rs          Camera2D（正交投影）
+├── render_system.rs   RenderSystem（engine 的门面）
+└── vulkan/
+    ├── context.rs     VulkanContext：实例/设备/队列/分配器
+    ├── swapchain.rs   SwapchainContext：交换链/图像/帧缓冲/render pass + resize 重建
+    ├── sprite.rs      SpriteRenderer：管线/布局/描述符/缓冲/相机 + 录制
+    └── renderer.rs    VulkanRenderer：组合三者，render_frame 编排
+```
+
+**一次性初始化 vs 每帧**：
+
+- 一次性（各 `new`）：
+  - `context`：Instance / Surface / 物理设备 / Device+Queue / 三个分配器（command buffer、memory、descriptor set）
+  - `swapchain`：Swapchain / images / image views / framebuffers / render pass
+  - `sprite`：顶点·索引·uniform 缓冲、shader module、PipelineLayout、DescriptorSet、GraphicsPipeline、Camera2D、Viewport
+- 每帧（`renderer.render_frame`）：
+  - 尺寸变化 → 重建 swapchain / framebuffer
+  - 更新相机 viewport + 写 uniform 缓冲内容
+  - `acquire_next_image`
+  - 录制命令缓冲：`begin_render_pass → set_viewport → bind pipeline → bind vertex/index → bind descriptor → draw_indexed → end_render_pass`
+  - `submit → present → 等 fence`
+
+对应 Piccolo：`context`≈RHI 初始化、`swapchain`≈RHI 的 `createSwapchain/recreate`、`sprite`≈`render_pipeline`/`passes`、`renderer`≈`render_system` + `prepareBeforePass`/`submitRendering`。
+
+**如何把"画方块"从初始化里封装出去（下一步方向）**：
+
+现状：`sprite.rs::new` 把 quad 的顶点/颜色**写死**，`record` 固定画一个 quad。
+
+方向：把 **"画什么"(数据)** 与 **"怎么画"(机制)** 分开（对齐 Piccolo 的 `RenderScene` / `render_resource` / `render_pipeline`）：
+- **渲染数据**（新）：一个 `Sprite { position, size, texture, uv, color }` 列表，由逻辑层（将来 framework 的组件）产出。
+- **渲染器**（`sprite.rs`）：只管机制——管线/布局/采样器建一次；持**动态顶点缓冲**，每帧从 sprite 列表**重建顶点数据**（每个 sprite → 4 顶点 / 6 索引）并上传，然后一次 `draw_indexed`。
+- 即 `SpriteRenderer::draw(&mut self, sprites: &[Sprite])` 取代写死的 quad；进阶做**批渲染**（动态缓冲 + 图集 → 一次 draw call）。
+- 将来：framework 把 `GameObject` / `SpriteComponent` → 渲染数据 → 渲染器绘制。
 
 ### 迭代 4：游戏框架
 

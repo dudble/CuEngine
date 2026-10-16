@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bytemuck = "1.25.2" # 矩阵传给GPU用
 vulkano = "0.35.2"
 winit = "0.30.13"
+engine-core = { path = "../engine-core" }

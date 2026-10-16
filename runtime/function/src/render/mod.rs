@@ -1,3 +1,4 @@
+pub mod camera;
 pub mod render_system;
 pub mod shader;
 pub mod window;

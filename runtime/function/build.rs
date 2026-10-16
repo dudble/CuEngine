@@ -9,7 +9,7 @@ fn compile_shader() {
         let source = shader_dir.join(shader);
         println!("cargo:rerun-if-changed={}", source.display()); //监听着色器变化
         let output = Path::new(&out_dir).join(format!("{shader}.spv"));
-        let status = Command::new("glslc")
+        let status = Command::new("glslc") //调用 Vulkan SDK，将 glsl编译为 SPIR-V
             .arg(&source)
             .arg("-o")
             .arg(&output)

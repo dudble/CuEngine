@@ -1,5 +1,7 @@
 pub mod log;
 
+pub use glam;
+
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => { $crate::log::debug(&format!($($arg)*)) };

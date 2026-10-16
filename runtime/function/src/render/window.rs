@@ -31,7 +31,7 @@ pub trait WindowHandler {
 
 pub struct WindowSystem {
     window: Arc<Window>,
-    size: (u32, u32),
+    occluded: bool,
 }
 
 impl WindowSystem {
@@ -40,11 +40,10 @@ impl WindowSystem {
             .with_title(config.title.clone())
             .with_inner_size(LogicalSize::new(config.width as f64, config.height as f64));
         let window = Arc::new(event_loop.create_window(attributes)?);
-        let size = window.inner_size();
 
         Ok(Self {
             window,
-            size: (size.width, size.height),
+            occluded: false,
         })
     }
 
@@ -53,17 +52,15 @@ impl WindowSystem {
     }
 
     pub fn size(&self) -> (u32, u32) {
-        self.size
+        if self.occluded {
+            return (0, 0);
+        }
+        let size = self.window.inner_size();
+        (size.width, size.height)
     }
 
     pub fn set_title(&self, title: &str) {
         self.window.set_title(title);
-    }
-
-    fn on_resized(&mut self, width: u32, height: u32) {
-        if width > 0 && height > 0 {
-            self.size = (width, height);
-        }
     }
 }
 
@@ -105,9 +102,9 @@ impl<H: WindowHandler> ApplicationHandler for WindowApp<'_, H> {
                 self.handler.on_close();
                 event_loop.exit();
             }
-            WindowEvent::Resized(size) => {
+            WindowEvent::Occluded(occluded) => {
                 if let Some(window) = self.window.as_mut() {
-                    window.on_resized(size.width, size.height);
+                    window.occluded = occluded;
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -119,9 +116,17 @@ impl<H: WindowHandler> ApplicationHandler for WindowApp<'_, H> {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(window) = &self.window {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(window) = &self.window else {
+            return;
+        };
+
+        let (width, height) = window.size();
+        if width == 0 || height == 0 {
+            event_loop.set_control_flow(ControlFlow::Wait);
+        } else {
             window.window.request_redraw();
+            event_loop.set_control_flow(ControlFlow::Poll);
         }
     }
 }
