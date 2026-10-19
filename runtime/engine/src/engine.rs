@@ -1,13 +1,21 @@
+use engine_core::glam::Vec2;
+use function::framework::component::Mover;
+use function::framework::scene::world_from_level;
+use function::framework::world::World;
 use function::render::render_system::RenderSystem;
 use function::render::window::{WindowConfig, WindowHandler, WindowSystem, run as window_run};
 use resource::config::ConfigManager;
+use resource::scene::LevelRes;
 use std::time::Instant;
+
+use crate::render_bridge;
 
 const DEFAULT_WINDOW_TITLE: &str = "CuEngine";
 const FPS_SMOOTHING: f32 = 1.0 / 100.0;
 const MAX_DELTA_TIME: f32 = 0.1;
 
 pub struct Engine {
+    world: World,
     render: Option<RenderSystem>,
     window_title: String,
     vsync: bool,
@@ -20,6 +28,7 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Self {
         Self {
+            world: World::new(),
             render: None,
             window_title: DEFAULT_WINDOW_TITLE.to_string(),
             vsync: true,
@@ -37,6 +46,11 @@ impl Engine {
         engine_core::log::set_level(config.log_level);
         self.window_title = config.window.title.clone();
         self.vsync = config.vsync;
+
+        self.world = match resource::scene::load::<LevelRes>() {
+            Some(level) => world_from_level(&level),
+            None => demo_world(),
+        };
 
         engine_core::log_info!("engine start");
 
@@ -80,6 +94,8 @@ impl Default for Engine {
     }
 }
 
+
+
 impl WindowHandler for Engine {
     fn on_resume(&mut self, window: &mut WindowSystem) {
         let (width, height) = window.size();
@@ -93,8 +109,11 @@ impl WindowHandler for Engine {
         let delta_time = self.calculate_delta_time();
         self.calculate_fps(delta_time);
 
+        self.world.tick(delta_time);
+
+        let scene = render_bridge::extract(&self.world);
         if let Some(render) = &mut self.render {
-            render.render_frame(window.size());
+            render.render_frame(window.size(), &scene);
         }
 
         window.set_title(&format!("{} - {} FPS", self.window_title, self.fps));
@@ -103,6 +122,15 @@ impl WindowHandler for Engine {
     fn on_close(&mut self) {
         self.render = None;
     }
+}
+
+fn demo_world() -> World {
+    let mut world = World::new();
+    world
+        .level_mut()
+        .create_object("player")
+        .add_component(Box::new(Mover::new(Vec2::new(3.0, 0.0), -4.0, 4.0)));
+    world
 }
 
 #[cfg(test)]

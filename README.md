@@ -2,6 +2,8 @@
 
 基于 Rust + vulkano 的 2D 游戏引擎。
 
+<img src="./docs/demo.gif" alt="示例图片" width="300">
+
 ## 构建与运行
 
 ```powershell

@@ -12,6 +12,7 @@ use winit::window::Window;
 use super::context::VulkanContext;
 use super::sprite::SpriteRenderer;
 use super::swapchain::SwapchainContext;
+use crate::render::render_scene::RenderScene;
 
 const CLEAR_COLOR: [f32; 4] = [0.10, 0.10, 0.15, 1.0];
 
@@ -37,7 +38,7 @@ impl VulkanRenderer {
         }
     }
 
-    pub fn render_frame(&mut self, window_size: (u32, u32)) {
+    pub fn render_frame(&mut self, window_size: (u32, u32), scene: &RenderScene) {
         if window_size.0 == 0 || window_size.1 == 0 {
             return;
         }
@@ -59,7 +60,7 @@ impl VulkanRenderer {
                 }
             };
 
-        let command_buffer = self.record_scene(image_index as usize);
+        let command_buffer = self.record_scene(image_index as usize, scene);
 
         let future = acquire_future
             .then_execute(self.context.queue.clone(), command_buffer)
@@ -76,7 +77,7 @@ impl VulkanRenderer {
         future.wait(None).expect("failed to wait for frame");
     }
 
-    fn record_scene(&self, image_index: usize) -> Arc<PrimaryAutoCommandBuffer> {
+    fn record_scene(&mut self, image_index: usize, scene: &RenderScene) -> Arc<PrimaryAutoCommandBuffer> {
         let mut builder = AutoCommandBufferBuilder::primary(
             self.context.command_buffer_allocator.clone(),
             self.context.queue.queue_family_index(),
@@ -96,7 +97,7 @@ impl VulkanRenderer {
             )
             .expect("failed to begin render pass");
 
-        self.sprite.record(&mut builder);
+        self.sprite.record(&mut builder, scene.quads());
 
         builder
             .end_render_pass(SubpassEndInfo::default())

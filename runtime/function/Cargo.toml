@@ -6,4 +6,7 @@ edition = "2024"
 [dependencies]
 vulkano = "0.35.2"
 winit = "0.30.13"
+serde = { version = "1.0.229", features = ["derive"] } # 序列化
+toml = "1.1.8"
 engine-core = { path = "../engine-core" }
+resource = { path = "../resource" }

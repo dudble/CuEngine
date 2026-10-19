@@ -23,9 +23,12 @@ use vulkano::shader::{ShaderModule, ShaderModuleCreateInfo};
 
 use super::context::VulkanContext;
 use crate::render::camera::Camera2D;
+use crate::render::render_data::Quad;
 use crate::render::shader;
 
-#[derive(BufferContents, Vertex)]
+const MAX_QUADS: usize = 1024;
+
+#[derive(BufferContents, Vertex, Clone, Copy)]
 #[repr(C)]
 struct SpriteVertex {
     #[format(R32G32_SFLOAT)]
@@ -34,6 +37,16 @@ struct SpriteVertex {
     uv: [f32; 2],
     #[format(R32G32B32A32_SFLOAT)]
     color: [f32; 4],
+}
+
+impl Default for SpriteVertex {
+    fn default() -> Self {
+        Self {
+            position: [0.0; 2],
+            uv: [0.0; 2],
+            color: [0.0; 4],
+        }
+    }
 }
 
 #[derive(BufferContents)]
@@ -57,29 +70,6 @@ impl SpriteRenderer {
     pub fn new(context: &VulkanContext, render_pass: &Arc<RenderPass>, extent: (u32, u32)) -> Self {
         let device = &context.device;
         let memory_allocator = context.memory_allocator.clone();
-
-        let vertices = [
-            SpriteVertex {
-                position: [-0.5, -0.5],
-                uv: [0.0, 1.0],
-                color: [0.9, 0.4, 0.3, 1.0],
-            },
-            SpriteVertex {
-                position: [0.5, -0.5],
-                uv: [1.0, 1.0],
-                color: [0.3, 0.7, 0.9, 1.0],
-            },
-            SpriteVertex {
-                position: [0.5, 0.5],
-                uv: [1.0, 0.0],
-                color: [0.9, 0.8, 0.2, 1.0],
-            },
-            SpriteVertex {
-                position: [-0.5, 0.5],
-                uv: [0.0, 0.0],
-                color: [0.4, 0.9, 0.5, 1.0],
-            },
-        ];
         let host_visible = AllocationCreateInfo {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
@@ -93,11 +83,15 @@ impl SpriteRenderer {
                 ..Default::default()
             },
             host_visible.clone(),
-            vertices,
+            vec![SpriteVertex::default(); MAX_QUADS * 4],
         )
         .expect("failed to create vertex buffer");
 
-        let indices: [u32; 6] = [0, 1, 2, 0, 2, 3];
+        let mut indices = Vec::with_capacity(MAX_QUADS * 6);
+        for quad in 0..MAX_QUADS {
+            let base = (quad * 4) as u32;
+            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+        }
         let index_buffer = Buffer::from_iter(
             memory_allocator.clone(),
             BufferCreateInfo {
@@ -213,7 +207,51 @@ impl SpriteRenderer {
         uniform.view_projection = self.camera.view_projection().to_cols_array_2d();
     }
 
-    pub fn record(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
+    pub fn record(
+        &mut self,
+        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        quads: &[Quad],
+    ) {
+        let count = quads.len().min(MAX_QUADS);
+        if count == 0 {
+            return;
+        }
+
+        {
+            let mut vertices = self
+                .vertex_buffer
+                .write()
+                .expect("failed to write vertex buffer");
+
+            for (index, quad) in quads.iter().take(count).enumerate() {
+                let half = quad.size * 0.5;
+                let corner = index * 4;
+                let x = quad.position.x;
+                let y = quad.position.y;
+
+                vertices[corner] = SpriteVertex {
+                    position: [x - half.x, y - half.y],
+                    uv: [0.0, 1.0],
+                    color: quad.color,
+                };
+                vertices[corner + 1] = SpriteVertex {
+                    position: [x + half.x, y - half.y],
+                    uv: [1.0, 1.0],
+                    color: quad.color,
+                };
+                vertices[corner + 2] = SpriteVertex {
+                    position: [x + half.x, y + half.y],
+                    uv: [1.0, 0.0],
+                    color: quad.color,
+                };
+                vertices[corner + 3] = SpriteVertex {
+                    position: [x - half.x, y + half.y],
+                    uv: [0.0, 0.0],
+                    color: quad.color,
+                };
+            }
+        }
+
         builder
             .set_viewport(0, [self.viewport.clone()].into_iter().collect())
             .expect("failed to set viewport")
@@ -233,7 +271,7 @@ impl SpriteRenderer {
 
         unsafe {
             builder
-                .draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0)
+                .draw_indexed((count * 6) as u32, 1, 0, 0, 0)
                 .expect("failed to draw");
         }
     }

@@ -1,3 +1,4 @@
+use crate::render::render_scene::RenderScene;
 use crate::render::vulkan::VulkanRenderer;
 use crate::render::window::WindowSystem;
 
@@ -12,7 +13,7 @@ impl RenderSystem {
         }
     }
 
-    pub fn render_frame(&mut self, window_size: (u32, u32)) {
-        self.renderer.render_frame(window_size);
+    pub fn render_frame(&mut self, window_size: (u32, u32), scene: &RenderScene) {
+        self.renderer.render_frame(window_size, scene);
     }
 }
